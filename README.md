@@ -35,39 +35,58 @@ It also examines the non-linear relationship between experience and performance 
 
 ---
 
-## 📁 Folder Structure
+## Folder structure
 
-fund-manager-experience-performance/
-│
-├── data/
-│   ├── crspm.sas7bdat         # Original CRSPM SAS dataset (raw, untouched)
-│   ├── risk_free.csv          # Factor / risk-free data
-│   └── CRSPM_JOIN.csv         # Output from Script 1 (cleaned, ready-to-analyze)
-│
-├── code/
-│   ├── 1_data_cleaning.R      # read raw data → clean → save CRSPM_JOIN.csv
-│   └── 2_analysis.R           # read CRSPM_JOIN.csv + risk_free.csv → regressions
-│
-├── output/
-│   ├── models/                # Store model summaries or RDS outputs
-│   ├── figures/               # Any charts you create later
-│   └── tables/                # Regression result tables
-│
-└── README.md                  # Short description of the project
+- fund-manager-experience-performance/
+  - data/
+    - crspm.sas7bdat        # Original CRSPM SAS dataset (raw, untouched)
+    - risk_free.csv         # Factor / risk-free data
+    - CRSPM_JOIN.csv        # Output from Script 1 (cleaned, ready-to-analyze)
+  - code/
+    - 1_data_cleaning.R     # read raw data -> clean -> save CRSPM_JOIN.csv
+    - 2_analysis.R          # read CRSPM_JOIN.csv + risk_free.csv -> regressions
+  - output/
+    - models/               # store model summaries or RDS outputs
+    - figures/              # charts and plots
+    - tables/               # regression result tables
+  - README.md               # project description and instructions
 
-The data cleaning process is time-consuming.
-During re-runs, recalculating the rate of return caused inconsistencies.
-To improve  reproducibility:
+---
 
-The data cleaning part is executed once and saved as a clean file (CRSPM_Join.csv).
+##  How to Run
 
-The analysis part can be rerun multiple times independently.
+Make sure your working directory is set to the project root (`fund-manager-experience-performance/`).
 
-This modular structure reduces runtime and avoids redundant processing.
+###  Data Cleaning
+Run the following command in R or the terminal:
+```r
+source("code/1_data_cleaning.R")
+```
+This script:
+- Loads the raw CRSP SAS dataset from `data/`
+- Cleans and preprocesses fund-level information
+- Saves the cleaned output as `data/CRSPM_JOIN.csv`
 
+###  Analysis and Regression
+Once the cleaned file is generated, run:
+```r
+source("code/2_analysis.R")
+```
+This script:
+- Loads `CRSPM_JOIN.csv` and `risk_free.csv`
+- Calculates returns, Jensen’s alpha, and related measures
+- Performs regression analysis using `feols()` and `plm()`
+- Saves tables and figures into the `output/` folder
+
+---
+
+## 💡 Notes
+- The workflow is split into two scripts because the data cleaning stage takes longer to execute.
+- Separating the scripts improves **reproducibility** and allows quick reruns of analysis without reprocessing the raw data.
+- Make sure all input files are placed correctly inside the `data/` folder before running the scripts.
 
 ## Data 
-The underlying mutual fund and CRSP datasets are proprietary and **not publicly shared** due to licensing restrictions.  
+The underlying mutual fund and CRSP datasets are proprietary and **not publicly shared**
 However, the full code pipeline is provided to illustrate the analytical and econometric approach.
 
 
