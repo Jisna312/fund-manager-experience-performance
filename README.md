@@ -8,7 +8,7 @@ This repository contains R code from my Master's thesis project at the Indian St
 
 ##  Objective
 The project investigates whether the experience of fund managers affects mutual fund performance (measured via rate of return, Sharpe ratio, and Jensen’s alpha).  
-It also examines the non-linear relationship between experience and performance and how it evolves during financial crises.
+It also examines the non-linear relationship between experience and performance and how it evolves during financial crises. Also, how this relationship changes during recessions.
 
 ---
 
