@@ -5,11 +5,18 @@ library(ggplot2)
 install.packages("lmtest")
 
 
-#read data
-df_join <- read_csv("data/CRSPM_JOIN.csv")
-rf_raw  <- read_csv("data/risk_free.csv")
 
-
+#Define path
+paths <- list(
+  crspm_join = "data/CRSPM_JOIN.csv",
+  risk_free = "data/risk_free.csv",
+  models = "output/models/",
+  tables = "output/tables/",
+  figures = "output/figures/"
+)
+# read data
+df_join <- read_csv(paths$crspm_join)
+rf_raw  <- read_csv(paths$risk_free)
 #filter data whose summary period is AQ
 df_join<- df_join%>%
   filter(SUMMARY_PERIOD2 == "AQ")
@@ -27,7 +34,7 @@ df_join <- df_join %>%
   ) %>%
   ungroup()
 
-df_analysis<-df_join # creating a copy to check limitations of study like selection bias
+df_analysis<-df_join  #for diagnostic checks
 
 # Remove extreme outliers in rate_of_return (0.5% and 99.5% quantiles), plot the rate of return to see outliers
 if (sum(!is.na(df_join$rate_of_return)) > 0) {
@@ -86,7 +93,7 @@ df_join <- df_join %>%
   mutate(sharpe_ratio = (rate_of_return - avg_rf) / sd_return_fund)
 
 
-# 11. Build two analysis tables:
+#  Build two analysis tables:
 #     table_experience (uses 'experience') and table_tenure (uses 'tenure')
 
 table_experience <- df_join %>%
@@ -104,62 +111,10 @@ table_tenure <- df_join %>%
   mutate(tenure = if_else(is.numeric(tenure) & tenure >= 0, tenure, NA_real_)) %>%
   drop_na(tenure)
 
-# ---------------------------
-# 12. CHECK & RESOLVE duplicates (CRSP_FUNDNO, year)
-#     This resolves the "duplicate time values within id" error from plm()
-# ---------------------------
-resolve_duplicates <- function(tbl, id_col = "CRSP_FUNDNO", time_col = "year") {
-  dups <- tbl %>%
-    group_by(across(all_of(c(id_col, time_col)))) %>%
-    filter(n() > 1) %>%
-    ungroup()
-  if (nrow(dups) > 0) {
-    message(sprintf("Found %d duplicate rows for (%s, %s). Aggregating numeric cols by mean.", nrow(dups), id_col, time_col))
-    # Aggregation rule:
-    # - numeric columns -> mean
-    # - non-numeric -> first non-NA
-    tbl_clean <- tbl %>%
-      group_by(across(all_of(c(id_col, time_col)))) %>%
-      summarise(
-        across(where(is.numeric), ~ mean(.x, na.rm = TRUE)),
-        across(where(~ !is.numeric(.x)), ~ first(na.omit(.x))),
-        .groups = "drop"
-      )
-    return(tbl_clean)
-  } else {
-    message("No duplicate (id, time) pairs found.")
-    return(tbl)
-  }
-}
-
-table_experience <- resolve_duplicates(table_experience)
-table_tenure <- resolve_duplicates(table_tenure)
 
 
 # Jensen's alpha (per fund) using fixest (1-factor and 4-factor) on table_experience dataset
 
-# # Prepare excess return and market factor
-# table_experience <- table_experience %>%
-#   mutate(excess_return = rate_of_return - avg_rf,
-#          market_excess_return = avg_excess_ret)
-
-# # One-factor Jensen alpha (fund fixed effects)
-# model_alpha_1 <- feols(excess_return ~ market_excess_return | CRSP_FUNDNO,
-#                        data = table_experience, cluster = "CRSP_FUNDNO")
-# jensen_1 <- fixef(model_alpha_1, effect = "CRSP_FUNDNO")[[1]]
-# jensen_1_df <- tibble(CRSP_FUNDNO = as.integer(names(jensen_1)),
-#                       jensen_alpha_one_factor = as.numeric(jensen_1))
-
-# table_experience <- table_experience %>% left_join(jensen_1_df, by = "CRSP_FUNDNO")
-
-# # Four-factor Jensen alpha
-# model_alpha_4 <- feols(excess_return ~ market_excess_return + avg_smb + avg_hml + avg_momentum | CRSP_FUNDNO,
-#                        data = table_experience, cluster = "CRSP_FUNDNO")
-# jensen_4 <- fixef(model_alpha_4, effect = "CRSP_FUNDNO")[[1]]
-# jensen_4_df <- tibble(CRSP_FUNDNO = as.integer(names(jensen_4)),
-#                       jensen_alpha_four_factor = as.numeric(jensen_4))
-
-# table_experience <- table_experience %>% left_join(jensen_4_df, by = "CRSP_FUNDNO")
 
 table_experience <- table_experience %>%
   mutate(
@@ -278,59 +233,73 @@ table_tenure <- table_tenure %>%
 
 '
 
-# 14. Regressions (main analysis)
+#  Regressions (main analysis)
+
+# Helper function to save model summaries
+save_model_summary <- function(model, filename) {
+  sink(file.path(paths$models, filename))
+  print(summary(model))
+  sink()
+}
 
 
+# A: Experience regressions 
 
-# -- A: Experience regressions 
-#1. Rate of return ~ experience (fund + year FE), clustered by fund
+
+# 1. Rate of return ~ experience (fund + year FE)
 model_feols_basic <- feols(rate_of_return ~ experience + I(experience^2) + experience:crisis | CRSP_FUNDNO + year,
                            data = table_experience, cluster = "CRSP_FUNDNO")
-print(summary(model_feols_basic))
+save_model_summary(model_feols_basic, "experience_rate_basic.txt")
 
-# 2. With controls (expense ratio, fund size)
+# 2. With controls
 model_feols_ctrl <- feols(rate_of_return ~ experience + I(experience^2) + EXP_RATIO + TNA_LATEST + experience:crisis | CRSP_FUNDNO + year,
                           data = table_experience, cluster = "CRSP_FUNDNO")
-print(summary(model_feols_ctrl))
+save_model_summary(model_feols_ctrl, "experience_rate_controls.txt")
 
 # 3. Sharpe ratio model
 model_sharpe <- feols(sharpe_ratio ~ experience + I(experience^2) + EXP_RATIO + TNA_LATEST + experience:crisis | CRSP_FUNDNO + year,
                       data = table_experience, cluster = "CRSP_FUNDNO")
-print(summary(model_sharpe))
+save_model_summary(model_sharpe, "experience_sharpe.txt")
 
-# 4. Jensen alpha regressions (year FE, cluster by fund)
+# 4. Jensen alpha regressions (year FE)
 model_jensen1 <- feols(jensen_alpha_one_factor ~ experience + I(experience^2) + EXP_RATIO + TNA_LATEST + experience:crisis | year,
                        data = table_experience, cluster = "CRSP_FUNDNO")
-print(summary(model_jensen1))
+save_model_summary(model_jensen1, "experience_jensen1.txt")
 
 model_jensen4 <- feols(jensen_alpha_four_factor ~ experience + I(experience^2) + EXP_RATIO + TNA_LATEST + experience:crisis | year,
                        data = table_experience, cluster = "CRSP_FUNDNO")
-print(summary(model_jensen4))
+save_model_summary(model_jensen4, "experience_jensen4.txt")
 
-# -- B: Tenure  regressions 
-#1. Rate of return ~ tenure (fund + year FE), clustered by fund
+
+# B: Tenure regressions 
+
+
+# 1. Rate of return ~ tenure (fund + year FE)
 model_feols_basic_tenure <- feols(rate_of_return ~ tenure + I(tenure^2) + tenure:crisis | CRSP_FUNDNO + year,
-                           data = table_tenure, cluster = "CRSP_FUNDNO")
-print(summary(model_feols_basic_tenure))
+                                  data = table_tenure, cluster = "CRSP_FUNDNO")
+save_model_summary(model_feols_basic_tenure, "tenure_rate_basic.txt")
 
-# 2. With controls (expense ratio, fund size)
+# 2. With controls
 model_feols_ctrl_tenure <- feols(rate_of_return ~ tenure + I(tenure^2) + EXP_RATIO + TNA_LATEST + tenure:crisis | CRSP_FUNDNO + year,
-                          data = table_tenure, cluster = "CRSP_FUNDNO")
-print(summary(model_feols_ctrl_tenure))
+                                 data = table_tenure, cluster = "CRSP_FUNDNO")
+save_model_summary(model_feols_ctrl_tenure, "tenure_rate_controls.txt")
 
 # 3. Sharpe ratio model
 model_sharpe_tenure <- feols(sharpe_ratio ~ tenure + I(tenure^2) + EXP_RATIO + TNA_LATEST + tenure:crisis | CRSP_FUNDNO + year,
-                      data = table_tenure, cluster = "CRSP_FUNDNO")
-print(summary(model_sharpe_tenure))
+                             data = table_tenure, cluster = "CRSP_FUNDNO")
+save_model_summary(model_sharpe_tenure, "tenure_sharpe.txt")
 
-# 4. Jensen alpha regressions (year FE, cluster by fund)
-model_jensen1_tenure <- feols(jensen_alpha_one_factor ~tenure + I(tenure^2) + EXP_RATIO + TNA_LATEST + tenure:crisis | year,
-                       data = table_tenure, cluster = "CRSP_FUNDNO")
-print(summary(model_jensen1_tenure))
+# 4. Jensen alpha regressions (year FE)
+model_jensen1_tenure <- feols(jensen_alpha_one_factor ~ tenure + I(tenure^2) + EXP_RATIO + TNA_LATEST + tenure:crisis | year,
+                              data = table_tenure, cluster = "CRSP_FUNDNO")
+save_model_summary(model_jensen1_tenure, "tenure_jensen1.txt")
 
 model_jensen4_tenure <- feols(jensen_alpha_four_factor ~ tenure + I(tenure^2) + EXP_RATIO + TNA_LATEST + tenure:crisis | year,
-                       data = table_tenure, cluster = "CRSP_FUNDNO")
-print(summary(model_jensen4_tenure))
+                              data = table_tenure, cluster = "CRSP_FUNDNO")
+save_model_summary(model_jensen4_tenure, "tenure_jensen4.txt")
+
+cat("✅ All model summaries saved inside:", paths$models, "\n")
+
 
 '
 
@@ -338,81 +307,73 @@ print(summary(model_jensen4_tenure))
 #  Diagnostics
 # results of regression using experience variable are more stable, while creating experience variable, we didn't use mutual funds, which are managed by groups and flagged those using group variable 
 # We are checking if observations which is removed due to management by groups are  different from the others using other variables of data
-
 # percentage of cash holding by mutual fund(PER_CASH), df_analysis is dataset copy we made before filtering, ASSET_DT is the date at which PER_CASH is recorded
+# 1. Crisis-interaction model
+# -------------------------------
 df_analysis <- df_analysis %>%
   mutate(
     year = year(ASSET_DT),
-    crisis_A = ifelse(year %in% c(2001, 2008, 2009), 1, 0)
+    crisis_A = ifelse(year %in% c(2001, 2008, 2009), 1, 0),
+    year_A = year(ASSET_DT)
   )
 
-df_analysis <- df_analysis %>%
-  mutate(year_A = year(ASSET_DT))
-
 model_per_cash <- feols(
-  PER_CASH ~ experience + experience:crisis_A + GROUP| CRSP_FUNDNO + year_A ,
+  PER_CASH ~ experience + experience:crisis_A + GROUP | CRSP_FUNDNO + year_A,
   data = df_analysis,
   cluster = "CRSP_FUNDNO"
 )
 
+save_model_summary(model_per_cash, "per_cash_experience_crisis.txt")
 
 
-summary(model_per_cash)
+# 2. Check if NAV and PER_CASH differ across GROUP and JOIN_NULL
 
 
-
-
-## chech if NAV, PER_CASH different across category in GROUP and JOIN_NULL using lmtest package
-#NAV-GROUP
+# NAV ~ GROUP
 model_NAV_group <- lm(NAV_LATEST ~ GROUP, data = df1)
+save_model_summary(model_NAV_group, "nav_by_group.txt")
 
-# Summary of the regression
-summary(modelmodel_NAV_group)
-
-#NAV_JOIN_NULL
+# NAV ~ JOIN_NULL
 model_NAV_NA <- lm(NAV_LATEST ~ JOIN_NULL, data = df1)
+save_model_summary(model_NAV_NA, "nav_by_joinnull.txt")
 
-# Summary of the regression
-summary(model_NAV_NA)
-
-
-#PER_CASH
-
-
-#PER_CASH_GROUP
+# PER_CASH ~ GROUP
 model_cash_group <- lm(PER_CASH ~ GROUP, data = df1)
+save_model_summary(model_cash_group, "percash_by_group.txt")
 
-# Summary of the regression
-summary(model_cash_group)
-
-#PER_CASH_JOIN_NULL
+# PER_CASH ~ JOIN_NULL
 model_cash_NA <- lm(PER_CASH ~ JOIN_NULL, data = df1)
-
-# Summary of the regression
-summary(model_cash_NA)
+save_model_summary(model_cash_NA, "percash_by_joinnull.txt")
 
 
-# This analysis indicates sample selection bias; need to do some remedy for this
+# This analysis indicates sample selection bias(limitation due to data constraints)
 
 
 # plot of experience
 # Remove NA values and plot the histogram
-df_analysis %>%
+p_exp <- df_analysis %>%
   filter(!is.na(experience)) %>%
   ggplot(aes(x = experience)) +
   geom_histogram(binwidth = 1, fill = "steelblue", color = "white") +
   labs(
-    title = "Distribution of Manager experience (in Years)",
-    x = "Texperience (Years)",
+    title = "Distribution of Manager Experience (Years)",
+    x = "Experience (Years)",
     y = "Frequency"
   ) +
   theme_minimal()
 
+ggsave(filename = paste0(paths$figures, "experience_distribution.png"),
+       plot = p_exp, width = 7, height = 5)
 
-# Distribution of experience
-if ("experience" %in% colnames(table_experience)) {
-  print(summary(table_experience$experience))
-}
+
+
+# Summary of Experience Variable
+sink(file.path(paths$models, "summary_experience_variable.txt"))
+cat("Summary of 'experience' variable in table_experience\n\n")
+print(summary(table_experience$experience))
+sink()
+cat("✅ Summary of experience variable saved to:", file.path(paths$models, "summary_experience_variable.txt"), "\n")
+
 
 
 
