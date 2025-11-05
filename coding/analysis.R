@@ -1,6 +1,7 @@
 library(dplyr)
 library(fixest)
-library(lubridate)      
+library(lubridate) 
+library(ggplot2)
 
 
 #read data
@@ -24,6 +25,8 @@ df_join <- df_join %>%
     rate_of_return = if_else(!is.na(lag_NAV_year), (NAV_LATEST - lag_NAV_year) / lag_NAV_year, NA_real_)
   ) %>%
   ungroup()
+
+df_analysis<-df_join # creating a copy to check limitations of study like selection bias
 
 # Remove extreme outliers in rate_of_return (0.5% and 99.5% quantiles), plot the rate of return to see outliers
 if (sum(!is.na(df_join$rate_of_return)) > 0) {
@@ -190,7 +193,7 @@ table_experience <- table_experience %>%
   left_join(jensen_alpha_df, by = "CRSP_FUNDNO")
 
 
-#Jensens 4 4-factor alpha
+#Jensens 4-factor alpha
 
 model_alpha <- feols(
   excess_return ~ market_excess_return + avg_smb + avg_hml+ avg_momentum | CRSP_FUNDNO,
@@ -278,7 +281,7 @@ table_tenure <- table_tenure %>%
 
 
 
-# -- A: Experience regressions (recommended: fixest)
+# -- A: Experience regressions 
 #1. Rate of return ~ experience (fund + year FE), clustered by fund
 model_feols_basic <- feols(rate_of_return ~ experience + I(experience^2) + experience:crisis | CRSP_FUNDNO + year,
                            data = table_experience, cluster = "CRSP_FUNDNO")
@@ -303,24 +306,80 @@ model_jensen4 <- feols(jensen_alpha_four_factor ~ experience + I(experience^2) +
                        data = table_experience, cluster = "CRSP_FUNDNO")
 print(summary(model_jensen4))
 
-# -- B: Tenure regressions (if table_tenure has data)
-if (nrow(table_tenure) > 0) {
-  model_tenure_basic <- feols(rate_of_return ~ tenure + I(tenure^2) + tenure:crisis | CRSP_FUNDNO + year,
-                              data = table_tenure, cluster = "CRSP_FUNDNO")
-  print(summary(model_tenure_basic))
-}
+# -- B: Tenure  regressions 
+#1. Rate of return ~ tenure (fund + year FE), clustered by fund
+model_feols_basic_tenure <- feols(rate_of_return ~ tenure + I(tenure^2) + tenure:crisis | CRSP_FUNDNO + year,
+                           data = table_tenure, cluster = "CRSP_FUNDNO")
+print(summary(model_feols_basic_tenure))
 
-# -- C: Classical plm() example (requires unique id-year pairs -- we aggregated earlier)
-pdata_exp <- pdata.frame(table_experience %>% mutate(year = as.integer(year)),
-                         index = c("CRSP_FUNDNO", "year"))
-plm_model <- plm(rate_of_return ~ experience + experience:crisis + GROUP,
-                 data = pdata_exp, model = "within", effect = "twoways")
-vcov_plm <- vcovHC(plm_model, method = "arellano", type = "HC1", cluster = "group")
-print(coeftest(plm_model, vcov_plm))
+# 2. With controls (expense ratio, fund size)
+model_feols_ctrl_tenure <- feols(rate_of_return ~ tenure + I(tenure^2) + EXP_RATIO + TNA_LATEST + tenure:crisis | CRSP_FUNDNO + year,
+                          data = table_tenure, cluster = "CRSP_FUNDNO")
+print(summary(model_feols_ctrl_tenure))
 
-# ---------------------------
-# 15. Diagnostics & quick summaries
-# ---------------------------
+# 3. Sharpe ratio model
+model_sharpe_tenure <- feols(sharpe_ratio ~ tenure + I(tenure^2) + EXP_RATIO + TNA_LATEST + tenure:crisis | CRSP_FUNDNO + year,
+                      data = table_tenure, cluster = "CRSP_FUNDNO")
+print(summary(model_sharpe_tenure))
+
+# 4. Jensen alpha regressions (year FE, cluster by fund)
+model_jensen1_tenure <- feols(jensen_alpha_one_factor ~tenure + I(tenure^2) + EXP_RATIO + TNA_LATEST + tenure:crisis | year,
+                       data = table_tenure, cluster = "CRSP_FUNDNO")
+print(summary(model_jensen1_tenure))
+
+model_jensen4_tenure <- feols(jensen_alpha_four_factor ~ tenure + I(tenure^2) + EXP_RATIO + TNA_LATEST + tenure:crisis | year,
+                       data = table_tenure, cluster = "CRSP_FUNDNO")
+print(summary(model_jensen4_tenure))
+
+'
+
+
+#  Diagnostics
+# results of regression using experience variable are more stable, while creating experience variable, we didn't use mutual funds, which are managed by groups and flagged those using group variable 
+# We are checking if observations which is removed due to management by groups are  different from the others using other variables of data
+
+# percentage of cash holding by mutual fund(PER_CASH), df_analysis is dataset copy we made before filtering, ASSET_DT is the date at which PER_CASH is recorded
+df_analysis <- df_analysis %>%
+  mutate(
+    year = year(ASSET_DT),
+    crisis_A = ifelse(year %in% c(2001, 2008, 2009), 1, 0)
+  )
+
+df_analysis <- df_analysis %>%
+  mutate(year_A = year(ASSET_DT))
+
+model_per_cash <- feols(
+  PER_CASH ~ experience + experience:crisis_A + GROUP| CRSP_FUNDNO + year_A ,
+  data = df_analysis,
+  cluster = "CRSP_FUNDNO"
+)
+
+
+
+summary(model_per_cash)
+
+
+
+
+# plot of experience
+# Remove NA values and plot the histogram
+df_analysis %>%
+  filter(!is.na(experience)) %>%
+  ggplot(aes(x = experience)) +
+  geom_histogram(binwidth = 1, fill = "steelblue", color = "white") +
+  labs(
+    title = "Distribution of Manager experience (in Years)",
+    x = "Texperience (Years)",
+    y = "Frequency"
+  ) +
+  theme_minimal()
+
+
+
+
+
+
+
 # Basic summary statistics
 message("Basic counts:")
 message("Number of funds (table_experience): ", n_distinct(table_experience$CRSP_FUNDNO))
@@ -331,7 +390,7 @@ if ("experience" %in% colnames(table_experience)) {
   print(summary(table_experience$experience))
 }
 
-# ---------------------------
+
 # 16. (Optional) Save cleaned outputs locally
 # ---------------------------
 # Uncomment to save (local only; do not push proprietary outputs to public repos)
