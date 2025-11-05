@@ -2,6 +2,7 @@ library(dplyr)
 library(fixest)
 library(lubridate) 
 library(ggplot2)
+install.packages("lmtest")
 
 
 #read data
@@ -361,6 +362,39 @@ summary(model_per_cash)
 
 
 
+## chech if NAV, PER_CASH different across category in GROUP and JOIN_NULL using lmtest package
+#NAV-GROUP
+model_NAV_group <- lm(NAV_LATEST ~ GROUP, data = df1)
+
+# Summary of the regression
+summary(modelmodel_NAV_group)
+
+#NAV_JOIN_NULL
+model_NAV_NA <- lm(NAV_LATEST ~ JOIN_NULL, data = df1)
+
+# Summary of the regression
+summary(model_NAV_NA)
+
+
+#PER_CASH
+
+
+#PER_CASH_GROUP
+model_cash_group <- lm(PER_CASH ~ GROUP, data = df1)
+
+# Summary of the regression
+summary(model_cash_group)
+
+#PER_CASH_JOIN_NULL
+model_cash_NA <- lm(PER_CASH ~ JOIN_NULL, data = df1)
+
+# Summary of the regression
+summary(model_cash_NA)
+
+
+# This analysis indicates sample selection bias; need to do some remedy for this
+
+
 # plot of experience
 # Remove NA values and plot the histogram
 df_analysis %>%
@@ -375,29 +409,12 @@ df_analysis %>%
   theme_minimal()
 
 
-
-
-
-
-
-# Basic summary statistics
-message("Basic counts:")
-message("Number of funds (table_experience): ", n_distinct(table_experience$CRSP_FUNDNO))
-message("Observations (table_experience): ", nrow(table_experience))
-
 # Distribution of experience
 if ("experience" %in% colnames(table_experience)) {
   print(summary(table_experience$experience))
 }
 
 
-# 16. (Optional) Save cleaned outputs locally
-# ---------------------------
-# Uncomment to save (local only; do not push proprietary outputs to public repos)
-# dir.create("output", showWarnings = FALSE)
-# write_rds(table_experience, "output/table_experience_clean.rds")
-# write_csv(table_experience, "output/table_experience_clean.csv")
 
-###############################################################################
-# End of script
-###############################################################################
+
+#END
