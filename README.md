@@ -35,26 +35,26 @@ It also examines the non-linear relationship between experience and performance 
 
 ---
 
-## Folder  Structure
+## 📁 Folder Structure
+
+
 fund-manager-experience-performance/
 │
 ├── data/
-│     └── crspm.sas7bdat          # Original CRSPM SAS dataset (raw, untouched)
-│     └── risk_free.csv           # Factor / risk-free data
-│     └── CRSPM_JOIN.csv          # Output from Script 1 (cleaned, ready-to-analyze)
+│ ├── crspm.sas7bdat # Original CRSPM SAS dataset (raw, untouched)
+│ ├── risk_free.csv # Factor / risk-free data
+│ └── CRSPM_JOIN.csv # Output from Script 1 (cleaned, ready-to-analyze)
 │
 ├── code/
-│   ├── 1_data_cleaning.R            read raw data → clean → save CRSPM_JOIN.csv
-│   └── 2_analysis.R                 read CRSPM_JOIN.csv + risk_free.csv → regressions
+│ ├── 1_data_cleaning.R # read raw data → clean → save CRSPM_JOIN.csv
+│ └── 2_analysis.R # read CRSPM_JOIN.csv + risk_free.csv → regressions
 │
 ├── output/
-│   ├── models/                     # Store model summaries or RDS outputs
-│   ├── figures/                    # Any charts you create later
-│   └── tables/                     # Regression result tables
+│ ├── models/ # Store model summaries or RDS outputs
+│ ├── figures/ # Any charts you create later
+│ └── tables/ # Regression result tables
 │
-└── README.md                       # Short description of project 
-
-
+└── README.md # Short description of the project
 The data cleaning process is time-consuming.
 During re-runs, recalculating the rate of return caused inconsistencies.
 To improve  reproducibility:
