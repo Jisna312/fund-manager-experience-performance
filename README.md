@@ -1,4 +1,4 @@
-# Fund Manager Experience and Mutual Fund Performance
+# The Role of Managerial Experience on Mutual Fund Performance
 
 This repository contains R code from my Master's thesis project at the Indian Statistical Institute, Delhi, titled  
 **“The Role of Managerial Experience on Mutual Fund
