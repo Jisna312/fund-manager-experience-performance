@@ -58,7 +58,7 @@ Make sure your working directory is set to the project root (`fund-manager-exper
 ###  Data Cleaning
 Run the following command in R or the terminal:
 ```r
-source("code/1_data_cleaning.R")
+source("coding/data_cleaning.R")
 ```
 This script:
 - Loads the raw CRSP SAS dataset from `data/`
@@ -68,7 +68,7 @@ This script:
 ###  Analysis and Regression
 Once the cleaned file is generated, run:
 ```r
-source("code/2_analysis.R")
+source("coding/analysis.R")
 ```
 This script:
 - Loads `CRSPM_JOIN.csv` and `risk_free.csv`
