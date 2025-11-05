@@ -39,17 +39,15 @@ It also examines the non-linear relationship between experience and performance 
 
 - fund-manager-experience-performance/
   - data/
-    - crspm.sas7bdat        # Original CRSPM SAS dataset (raw, untouched)
-    - risk_free.csv         # Factor / risk-free data
-    - CRSPM_JOIN.csv        # Output from Script 1 (cleaned, ready-to-analyze)
+    - readme.txt               # information about datasets
   - code/
-    - 1_data_cleaning.R     # read raw data -> clean -> save CRSPM_JOIN.csv
-    - 2_analysis.R          # read CRSPM_JOIN.csv + risk_free.csv -> regressions
+    - 1_data_cleaning.R        # read raw data -> clean -> save CRSPM_JOIN.csv
+    - 2_analysis.R             # read CRSPM_JOIN.csv + risk_free.csv -> regressions
   - output/
-    - models/               # store model summaries or RDS outputs
-    - figures/              # charts and plots
-    - tables/               # regression result tables
-  - README.md               # project description and instructions
+    - models/                  # store model summaries or RDS outputs
+    - figures/                 # charts and plots
+    - tables/                  # regression result tables
+  - README.md                  # project description and instructions
 
 ---
 
