@@ -40,6 +40,7 @@ It also examines the non-linear relationship between experience and performance 
 - fund-manager-experience-performance/
   - data/
     - readme.txt               # information about datasets
+    - DATA_SUMMARY             # summary of variables in crspm dataset
   - code/
     - 1_data_cleaning.R        # read raw data -> clean -> save CRSPM_JOIN.csv
     - 2_analysis.R             # read CRSPM_JOIN.csv + risk_free.csv -> regressions
