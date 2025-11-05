@@ -1,24 +1,21 @@
-###############################################################################
-# data_cleaning_crspm.R
-#
-# Cleans and processes raw CRSPM dataset up to creation of CRSPM_JOIN.csv
-###############################################################################
+
+# Cleans and processes raw CRSPM dataset for creating CRSPM_JOIN.csv
 
 library(tidyverse)
 library(lubridate)
 library(haven)
 
-# ---------------------------
-# 1. File paths
-# ---------------------------
+#1. Obtain the raw file `crspm.sas7bdat` (CRSPSurvivor-Bias-Free US Mutual Fund database ).
+#2. Save it inside the `data/` folder.
+#3. Run `source("coding/data_cleaning.R")` and save the processed data in the data folder as CRSPM_JOIN.csv.
+
 paths <- list(
-  crspm_sas = "data/crspm.sas7bdat",    # raw CRSPM SAS dataset
+  crspm_sas = "data/crspm.sas7bdat",    #  CRSPM SAS dataset
   crspm_join = "data/CRSPM_JOIN.csv"    # output file
 )
 
-# ---------------------------
-# 2. Helper functions
-# ---------------------------
+# functions
+
 normalize_name <- function(name) {
   name %>%
     toupper() %>%
@@ -42,14 +39,14 @@ compute_join_dt <- function(mgr_name, earliest_tbl) {
   as_date(min(eds$EARLIEST_DT, na.rm = TRUE))
 }
 
-# ---------------------------
-# 3. Read raw data
-# ---------------------------
+
+# Read raw data
+
 df_raw <- read_sas(paths$crspm_sas)
 
-# ---------------------------
-# 4. Normalize manager names and compute earliest manager dates
-# ---------------------------
+
+# Normalise manager names and compute the earliest manager dates
+# A group of managers manages some mutual fund; in such cases, the maximum experience among the managers is considered.
 df_norm <- df_raw %>%
   mutate(MGR_NAME_NORM = normalize_name(MGR_NAME)) %>%
   separate_rows(MGR_NAME_NORM, sep = "/") %>%
@@ -64,9 +61,12 @@ earliest_dates <- df_norm %>%
   summarise(EARLIEST_DT = min(MGR_DT, na.rm = TRUE), .groups = "drop") %>%
   mutate(EARLIEST_DT = as_date(EARLIEST_DT))
 
-# ---------------------------
-# 5. Compute JOIN_DT and GROUP flag
-# ---------------------------
+
+
+#  Compute JOIN_DT and GROUP flag
+# Join_DT is the date of joining of the manager with the most experience for each mutual fund. This will be the first date of joining this manager has appeared in the database
+# Group flag is for mutual funds which is managed by committees, for which we can't find the  experience level ofthe  most experienced manager
+# Limitation: Career gaps won't be accounted for
 df_raw <- df_raw %>%
   mutate(
     JOIN_DT = map_chr(MGR_NAME, ~ as.character(compute_join_dt(.x, earliest_dates))),
@@ -78,9 +78,10 @@ df_raw <- df_raw %>%
     ))
   )
 
-# ---------------------------
-# 6. Compute experience and tenure
-# ---------------------------
+
+# Compute experience and tenure
+# Experience is calculated using the JOIN_DT column we made, and tenure is the column which is calculated using MGR_DT, which gives the  joining date of the manager in a specific mutual fund
+
 df_raw <- df_raw %>%
   mutate(
     NAV_LATEST_DT = as_date(NAV_LATEST_DT),
@@ -98,14 +99,12 @@ df_raw <- df_raw %>%
     )
   )
 
-# ---------------------------
-# 7. Save cleaned version
-# ---------------------------
-message("✅ Saving cleaned dataset as data/CRSPM_JOIN.csv ...")
-write_csv(df_raw, paths$crspm_join)
-message("✅ CRSPM_JOIN.csv saved successfully!")
 
-###############################################################################
-# End of Script 1
-###############################################################################
+#  Save cleaned version
+
+
+write_csv(df_raw, paths$crspm_join)
+
+
+
 
