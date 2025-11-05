@@ -1,18 +1,18 @@
+library(dplyr)
+library(fixest)
+library(lubridate)      
+
+
 #read data
 df_join <- read_csv("data/CRSPM_JOIN.csv")
 rf_raw  <- read_csv("data/risk_free.csv")
 
-df_join <- df_join %>%
-  mutate(NAV_LATEST_DT = as_date(NAV_LATEST_DT),
-         JOIN_DT = as_date(JOIN_DT),
-         # compute tenure from MGR_DT if not present
-         tenure = if_else(!is.na(NAV_LATEST_DT) & !is.na(MGR_DT),
-                          as.numeric(difftime(NAV_LATEST_DT, as_date(MGR_DT), units = "days")) / 365.25,
-                          NA_real_))
 
-# ---------------------------
-# 7. Compute annual rate_of_return (year-on-year) in df_join safely
-# ---------------------------
+#filter data whose summary period is AQ
+df_join<- df_join%>%
+  filter(SUMMARY_PERIOD2 == "AQ")
+# Compute annual rate_of_return (year-on-year) in df_join
+
 df_join <- df_join %>%
   arrange(CRSP_FUNDNO, NAV_LATEST_DT) %>%
   group_by(CRSP_FUNDNO) %>%
@@ -25,25 +25,24 @@ df_join <- df_join %>%
   ) %>%
   ungroup()
 
-# Remove extreme outliers in rate_of_return (0.5% and 99.5% quantiles)
+# Remove extreme outliers in rate_of_return (0.5% and 99.5% quantiles), plot the rate of return to see outliers
 if (sum(!is.na(df_join$rate_of_return)) > 0) {
   lower_bound <- quantile(df_join$rate_of_return, 0.005, na.rm = TRUE)
   upper_bound <- quantile(df_join$rate_of_return, 0.995, na.rm = TRUE)
   df_join <- df_join %>% filter(rate_of_return > lower_bound & rate_of_return < upper_bound)
 }
 
-# ---------------------------
-# 8. Crisis variable & year
-# ---------------------------
+# Creating dummy variable for recession year according to the FED 
+
 df_join <- df_join %>%
   mutate(year = year(NAV_LATEST_DT),
          crisis = if_else(year %in% c(2001, 2008, 2009), 1L, 0L))
 
-# ---------------------------
-# 9. Risk-free / factor data: clean & aggregate to yearly averages
-# ---------------------------
+
+# Risk-free / factor data: converting monthly into yearly estimates
+
 rf_clean <- rf_raw %>%
-  # Replace the column names below to match your CSV header if they are different.
+  
   mutate(
     date = as_date(`Date..SAS...Last.Trading.Day.of.the.Month`, format = "%d-%m-%Y"),
     year = year(date),
@@ -66,9 +65,9 @@ rf_clean <- rf_raw %>%
 # Merge RF factors into df_join by year
 df_join <- df_join %>% left_join(rf_clean, by = "year")
 
-# ---------------------------
-# 10. Fund-level SD and Sharpe ratio
-# ---------------------------
+
+# Fund-level SD and Sharpe ratio
+
 fund_summary <- df_join %>%
   group_by(CRSP_FUNDNO) %>%
   summarise(
@@ -82,10 +81,10 @@ df_join <- df_join %>% left_join(fund_summary, by = "CRSP_FUNDNO")
 df_join <- df_join %>%
   mutate(sharpe_ratio = (rate_of_return - avg_rf) / sd_return_fund)
 
-# ---------------------------
+
 # 11. Build two analysis tables:
 #     table_experience (uses 'experience') and table_tenure (uses 'tenure')
-# ---------------------------
+
 table_experience <- df_join %>%
   select(rate_of_return, CRSP_FUNDNO, year, sharpe_ratio, experience,
          GROUP, EXP_RATIO, TNA_LATEST, crisis,
@@ -132,39 +131,155 @@ resolve_duplicates <- function(tbl, id_col = "CRSP_FUNDNO", time_col = "year") {
 table_experience <- resolve_duplicates(table_experience)
 table_tenure <- resolve_duplicates(table_tenure)
 
-# ---------------------------
-# 13. Jensen's alpha (per fund) using fixest (1-factor and 4-factor)
-# ---------------------------
-# Prepare excess return and market factor
+
+# Jensen's alpha (per fund) using fixest (1-factor and 4-factor) on table_experience dataset
+
+# # Prepare excess return and market factor
+# table_experience <- table_experience %>%
+#   mutate(excess_return = rate_of_return - avg_rf,
+#          market_excess_return = avg_excess_ret)
+
+# # One-factor Jensen alpha (fund fixed effects)
+# model_alpha_1 <- feols(excess_return ~ market_excess_return | CRSP_FUNDNO,
+#                        data = table_experience, cluster = "CRSP_FUNDNO")
+# jensen_1 <- fixef(model_alpha_1, effect = "CRSP_FUNDNO")[[1]]
+# jensen_1_df <- tibble(CRSP_FUNDNO = as.integer(names(jensen_1)),
+#                       jensen_alpha_one_factor = as.numeric(jensen_1))
+
+# table_experience <- table_experience %>% left_join(jensen_1_df, by = "CRSP_FUNDNO")
+
+# # Four-factor Jensen alpha
+# model_alpha_4 <- feols(excess_return ~ market_excess_return + avg_smb + avg_hml + avg_momentum | CRSP_FUNDNO,
+#                        data = table_experience, cluster = "CRSP_FUNDNO")
+# jensen_4 <- fixef(model_alpha_4, effect = "CRSP_FUNDNO")[[1]]
+# jensen_4_df <- tibble(CRSP_FUNDNO = as.integer(names(jensen_4)),
+#                       jensen_alpha_four_factor = as.numeric(jensen_4))
+
+# table_experience <- table_experience %>% left_join(jensen_4_df, by = "CRSP_FUNDNO")
+
 table_experience <- table_experience %>%
-  mutate(excess_return = rate_of_return - avg_rf,
-         market_excess_return = avg_excess_ret)
+  mutate(
+    excess_return = rate_of_return - avg_rf  
+  )
 
-# One-factor Jensen alpha (fund fixed effects)
-model_alpha_1 <- feols(excess_return ~ market_excess_return | CRSP_FUNDNO,
-                       data = table_experience, cluster = "CRSP_FUNDNO")
-jensen_1 <- fixef(model_alpha_1, effect = "CRSP_FUNDNO")[[1]]
-jensen_1_df <- tibble(CRSP_FUNDNO = as.integer(names(jensen_1)),
-                      jensen_alpha_one_factor = as.numeric(jensen_1))
+#  Create market excess return (R_m - R_f)
+table_experience <- table_experience %>%
+  mutate(
+    market_excess_return = avg_excess_ret
+  )
 
-table_experience <- table_experience %>% left_join(jensen_1_df, by = "CRSP_FUNDNO")
 
-# Four-factor Jensen alpha
-model_alpha_4 <- feols(excess_return ~ market_excess_return + avg_smb + avg_hml + avg_momentum | CRSP_FUNDNO,
-                       data = table_experience, cluster = "CRSP_FUNDNO")
-jensen_4 <- fixef(model_alpha_4, effect = "CRSP_FUNDNO")[[1]]
-jensen_4_df <- tibble(CRSP_FUNDNO = as.integer(names(jensen_4)),
-                      jensen_alpha_four_factor = as.numeric(jensen_4))
+#Jensen's alpha 1 -1-factor
+# Run panel regression with fund and year fixed effects
+model_alpha <- feols(
+  excess_return ~ market_excess_return | CRSP_FUNDNO,
+  data = table_experience,
+  cluster = "CRSP_FUNDNO"
+)
 
-table_experience <- table_experience %>% left_join(jensen_4_df, by = "CRSP_FUNDNO")
+jensen_alpha <- fixef(model_alpha, effect = "CRSP_FUNDNO")[[1]]
 
-# ---------------------------
+jensen_alpha_df <- data.frame(
+  CRSP_FUNDNO = names(jensen_alpha),
+  jensen_alpha_one_factor = as.numeric(jensen_alpha)
+)
+jensen_alpha_df$CRSP_FUNDNO <- as.integer(jensen_alpha_df$CRSP_FUNDNO)
+
+
+table_experience <- table_experience %>%
+  left_join(jensen_alpha_df, by = "CRSP_FUNDNO")
+
+
+#Jensens 4 4-factor alpha
+
+model_alpha <- feols(
+  excess_return ~ market_excess_return + avg_smb + avg_hml+ avg_momentum | CRSP_FUNDNO,
+  data = table_experience,
+  cluster = "CRSP_FUNDNO"
+)
+
+jensen_alpha <- fixef(model_alpha, effect = "CRSP_FUNDNO")[[1]]
+
+jensen_alpha_df <- data.frame(
+  CRSP_FUNDNO = names(jensen_alpha),
+  jensen_alpha_four_factor = as.numeric(jensen_alpha)
+)
+jensen_alpha_df$CRSP_FUNDNO <- as.integer(jensen_alpha_df$CRSP_FUNDNO)
+
+
+library(dplyr)
+
+table_experience <- table_experience %>%
+  left_join(jensen_alpha_df, by = "CRSP_FUNDNO")
+
+
+
+
+# Jensen's alpha (per fund) using fixest (1-factor and 4-factor) on table_tenure dataset
+
+table_tenure <- table_tenure %>%
+  mutate(
+    excess_return = rate_of_return - avg_rf  
+  )
+
+#  Create market excess return (R_m - R_f)
+table_tenure <- table_tenure %>%
+  mutate(
+    market_excess_return = avg_excess_ret
+  )
+
+# Jensen 1-factor alpha
+model_alpha <- feols(
+  excess_return ~ market_excess_return | CRSP_FUNDNO,
+  data = table_tenure,
+  cluster = "CRSP_FUNDNO"
+)
+
+jensen_alpha <- fixef(model_alpha, effect = "CRSP_FUNDNO")[[1]]
+
+jensen_alpha_df <- data.frame(
+  CRSP_FUNDNO = names(jensen_alpha),
+  jensen_alpha_one_factor = as.numeric(jensen_alpha)
+)
+jensen_alpha_df$CRSP_FUNDNO <- as.integer(jensen_alpha_df$CRSP_FUNDNO)
+
+
+library(dplyr)
+
+table_tenure <- table_tenure %>%
+  left_join(jensen_alpha_df, by = "CRSP_FUNDNO")
+
+
+#Jensens 4 4-factor alpha
+
+model_alpha <- feols(
+  excess_return ~ market_excess_return + avg_smb + avg_hml+ avg_momentum | CRSP_FUNDNO,
+  data = table_tenure,
+  cluster = "CRSP_FUNDNO"
+)
+
+jensen_alpha <- fixef(model_alpha, effect = "CRSP_FUNDNO")[[1]]
+
+jensen_alpha_df <- data.frame(
+  CRSP_FUNDNO = names(jensen_alpha),
+  jensen_alpha_four_factor = as.numeric(jensen_alpha)
+)
+jensen_alpha_df$CRSP_FUNDNO <- as.integer(jensen_alpha_df$CRSP_FUNDNO)
+
+
+
+
+table_tenure <- table_tenure %>%
+  left_join(jensen_alpha_df, by = "CRSP_FUNDNO")
+
+'
+
 # 14. Regressions (main analysis)
-#     Use fixest::feols (recommended). plm example included afterward.
-# ---------------------------
+
+
 
 # -- A: Experience regressions (recommended: fixest)
-# 1. Rate of return ~ experience (fund + year FE), clustered by fund
+#1. Rate of return ~ experience (fund + year FE), clustered by fund
 model_feols_basic <- feols(rate_of_return ~ experience + I(experience^2) + experience:crisis | CRSP_FUNDNO + year,
                            data = table_experience, cluster = "CRSP_FUNDNO")
 print(summary(model_feols_basic))
