@@ -41,7 +41,7 @@ It also examines the non-linear relationship between experience and performance 
   - data/
     - readme.txt               # information about datasets
     - DATA_SUMMARY             # summary of variables in crspm dataset
-  - code/
+  - coding/
     - 1_data_cleaning.R        # read raw data -> clean -> save CRSPM_JOIN.csv
     - 2_analysis.R             # read CRSPM_JOIN.csv + risk_free.csv -> regressions
   - output/
@@ -75,7 +75,7 @@ source("coding/analysis.R")
 This script:
 - Loads `CRSPM_JOIN.csv` and `risk_free.csv`
 - Calculates returns, Jensen’s alpha, and related measures
-- Performs regression analysis using `feols()` and `plm()`
+- Performs regression analysis using `feols()` 
 - Saves tables and figures into the `output/` folder
 
 ---
@@ -89,7 +89,8 @@ This script:
 The underlying mutual fund and CRSP datasets are proprietary and **not publicly shared**
 However, the full code pipeline is provided to illustrate the analytical and econometric approach.
 
-
+## Limitation
+Analysis shows sample selection bias, which is happening due to data constraints; I am working on solutions to remedy the sample selection bias.
 
 ---
 
@@ -103,3 +104,4 @@ library(fixest)
 library(plm)
 library(ggplot2)
 library(haven)
+library(lmtest)
