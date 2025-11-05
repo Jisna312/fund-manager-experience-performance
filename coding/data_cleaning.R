@@ -65,7 +65,8 @@ earliest_dates <- df_norm %>%
 
 #  Compute JOIN_DT and GROUP flag
 # Join_DT is the date of joining of the manager with the most experience for each mutual fund. This will be the first date of joining this manager has appeared in the database
-# Group flag is for mutual funds which is managed by committees, for which we can't find the  experience level ofthe  most experienced manager
+# Group flag is for mutual funds which is managed by committees, for which we can't find the  experience level of the  most experienced manager
+#JOIN_NULL is for flagging observation with experience as null 
 # Limitation: Career gaps won't be accounted for
 df_raw <- df_raw %>%
   mutate(
