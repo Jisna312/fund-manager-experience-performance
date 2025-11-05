@@ -48,6 +48,7 @@ It also examines the non-linear relationship between experience and performance 
     - figures/                 # charts and plots
     - tables/                  # regression result tables
   - README.md                  # project description and instructions
+  - Paper.pdf                  # written analysis and explanation of results
 
 ---
 
